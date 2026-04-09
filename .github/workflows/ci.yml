@@ -8,12 +8,28 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            name: Linux x64
+          - os: macos-15
+            name: macOS Apple Silicon
+          - os: windows-latest
+            name: Windows x64
+
+    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.name }})
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      # ------------------------------------------------------------------
+      # Linux dependencies
+      # ------------------------------------------------------------------
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -21,8 +37,69 @@ jobs:
             qt6-base-dev qt6-base-private-dev qt6-multimedia-dev \
             libgl1-mesa-dev libfftw3-dev
 
-      - name: Configure
+      # ------------------------------------------------------------------
+      # macOS dependencies
+      # ------------------------------------------------------------------
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install qt@6 ninja fftw
+
+      # ------------------------------------------------------------------
+      # Windows dependencies
+      # ------------------------------------------------------------------
+      - name: Install Qt (Windows)
+        if: runner.os == 'Windows'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          host: windows
+          target: desktop
+          arch: win64_mingw
+          modules: 'qtmultimedia qtshadertools'
+          tools: 'tools_mingw1310'
+          cache: true
+
+      - name: Download FFTW3 (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p third_party/fftw3/{include,lib,bin}
+          curl -L -o /tmp/fftw3.zip "https://fftw.org/pub/fftw/fftw-3.3.5-dll64.zip"
+          cd /tmp && unzip -o fftw3.zip -d fftw3
+          cp /tmp/fftw3/fftw3.h $GITHUB_WORKSPACE/third_party/fftw3/include/
+          cp /tmp/fftw3/libfftw3-3.dll $GITHUB_WORKSPACE/third_party/fftw3/bin/
+          cp /tmp/fftw3/libfftw3-3.def $GITHUB_WORKSPACE/third_party/fftw3/lib/
+
+      # ------------------------------------------------------------------
+      # Configure
+      # ------------------------------------------------------------------
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
-      - name: Build
-        run: cmake --build build -j$(nproc)
+      - name: Configure (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cmake -B build -G "MinGW Makefiles" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      # ------------------------------------------------------------------
+      # Build
+      # ------------------------------------------------------------------
+      - name: Build (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: cmake --build build -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cmake --build build -j$NUMBER_OF_PROCESSORS
