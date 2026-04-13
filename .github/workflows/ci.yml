@@ -100,41 +100,41 @@ jobs:
         run: |
           ccache --max-size=2G
           ccache --zero-stats
-          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
-          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
 
       - name: Setup sccache (Windows)
         if: runner.os == 'Windows'
         uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Configure sccache env (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          echo "CMAKE_C_COMPILER_LAUNCHER=sccache" >> $GITHUB_ENV
-          echo "CMAKE_CXX_COMPILER_LAUNCHER=sccache" >> $GITHUB_ENV
-          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
 
       # ------------------------------------------------------------------
       # Configure
       # ------------------------------------------------------------------
       - name: Configure (Linux)
         if: runner.os == 'Linux'
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Configure (macOS)
         if: runner.os == 'macOS'
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+            -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         shell: bash
+        env:
+          SCCACHE_GHA_ENABLED: "true"
         run: |
           cmake -B build -G "MinGW Makefiles" \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       # ------------------------------------------------------------------
       # Build
@@ -146,6 +146,8 @@ jobs:
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: bash
+        env:
+          SCCACHE_GHA_ENABLED: "true"
         run: cmake --build build -j$NUMBER_OF_PROCESSORS
 
       # ------------------------------------------------------------------
