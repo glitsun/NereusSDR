@@ -134,8 +134,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
+          # -DNEREUS_GPU_SPECTRUM=ON is explicit so CMake's FATAL_ERROR
+          # fires at configure time if the Qt install is missing the
+          # ShaderTools or Gui private modules. v0.1.1 silently shipped
+          # without GPU spectrum because this flag was implicit; never
+          # again.
           cmake -B build -G "MinGW Makefiles" \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DNEREUS_GPU_SPECTRUM=ON
 
       # ------------------------------------------------------------------
       # Build
