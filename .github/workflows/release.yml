@@ -303,3 +303,109 @@ jobs:
           name: macos-${{ matrix.arch }}
           path: NereusSDR-*.dmg
           retention-days: 7
+
+  build-windows:
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.*'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2019_64'
+          modules: 'qtmultimedia qtserialport qtwebsockets qtshadertools'
+          cache: true
+
+      - name: Install Ninja and NSIS
+        run: |
+          choco install ninja -y
+          choco install nsis -y
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - name: Setup FFTW3
+        shell: pwsh
+        run: |
+          $fftw_dir = "third_party/fftw3"
+          New-Item -ItemType Directory -Force -Path "$fftw_dir/include", "$fftw_dir/lib", "$fftw_dir/bin"
+          Invoke-WebRequest -Uri "https://www.fftw.org/fftw-3.3.5-dll64.zip" -OutFile fftw.zip
+          Expand-Archive -Path fftw.zip -DestinationPath fftw-tmp
+          Copy-Item fftw-tmp/fftw3.h "$fftw_dir/include/"
+          Copy-Item fftw-tmp/libfftw3-3.dll "$fftw_dir/bin/"
+          cd fftw-tmp
+          lib /def:libfftw3-3.def /out:fftw3.lib /machine:x64
+          cd ..
+          Copy-Item fftw-tmp/fftw3.lib "$fftw_dir/lib/"
+
+      - name: Configure
+        shell: bash
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+
+      - name: Build
+        shell: bash
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+        run: cmake --build build -j${NUMBER_OF_PROCESSORS}
+
+      - name: Test
+        working-directory: build
+        shell: bash
+        run: ctest --output-on-failure --no-tests=ignore
+
+      - name: Deploy Qt
+        shell: pwsh
+        run: |
+          mkdir deploy
+          copy build\NereusSDR.exe deploy\
+          windeployqt deploy\NereusSDR.exe --release --no-translations --no-system-d3d-compiler
+          if (Test-Path "third_party\fftw3\bin\libfftw3-3.dll") {
+            copy third_party\fftw3\bin\libfftw3-3.dll deploy\
+          }
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          $name = "NereusSDR-${{ needs.prepare.outputs.version }}-Windows-x64-portable.zip"
+          Compress-Archive -Path deploy\* -DestinationPath $name
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          $version = "${{ needs.prepare.outputs.version }}"
+          $deploy  = (Resolve-Path deploy).Path
+          $outfile = "NereusSDR-$version-Windows-x64-setup.exe"
+          & "C:\Program Files (x86)\NSIS\makensis.exe" `
+              /DNSDR_VERSION=$version `
+              /DNSDR_DEPLOYDIR=$deploy `
+              /DNSDR_OUTFILE=$outfile `
+              scripts\windows\installer.nsi
+          if (-not (Test-Path $outfile)) {
+            Write-Error "NSIS did not produce $outfile"
+            exit 1
+          }
+          Get-Item $outfile
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: |
+            NereusSDR-*.zip
+            NereusSDR-*-setup.exe
+          retention-days: 7
