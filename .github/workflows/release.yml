@@ -204,11 +204,24 @@ jobs:
           Categories=HamRadio;Audio;
           Comment=Cross-platform OpenHPSDR SDR Console
           DESKTOP
-          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-          convert -size 256x256 xc:"#0f0f1a" -fill "#00b4d8" -gravity center \
-            -pointsize 48 -annotate +0+0 "NSDR" \
-            AppDir/usr/share/icons/hicolor/256x256/apps/nereussdr.png 2>/dev/null || \
-          touch AppDir/usr/share/icons/hicolor/256x256/apps/nereussdr.png
+          # Install the real NereusSDR icon at standard hicolor sizes.
+          # Uses the pre-rendered PNGs from resources/icons/NereusSDR.iconset/
+          # so there is no image-processing dependency on the runner (the
+          # previous implementation called `convert` and fell back to `touch`,
+          # which either produced a placeholder "NSDR" text bitmap or a
+          # zero-byte file — neither is a usable icon). linuxdeploy creates
+          # the top-level .DirIcon symlink automatically based on the
+          # .desktop file's `Icon=nereussdr` field, so file managers will
+          # thumbnail the AppImage correctly.
+          for size in 16 32 64 128 256 512; do
+            mkdir -p AppDir/usr/share/icons/hicolor/${size}x${size}/apps
+          done
+          cp resources/icons/NereusSDR.iconset/icon_16x16.png     AppDir/usr/share/icons/hicolor/16x16/apps/nereussdr.png
+          cp resources/icons/NereusSDR.iconset/icon_32x32.png     AppDir/usr/share/icons/hicolor/32x32/apps/nereussdr.png
+          cp resources/icons/NereusSDR.iconset/icon_32x32@2x.png  AppDir/usr/share/icons/hicolor/64x64/apps/nereussdr.png
+          cp resources/icons/NereusSDR.iconset/icon_128x128.png   AppDir/usr/share/icons/hicolor/128x128/apps/nereussdr.png
+          cp resources/icons/NereusSDR.iconset/icon_256x256.png   AppDir/usr/share/icons/hicolor/256x256/apps/nereussdr.png
+          cp resources/icons/NereusSDR.iconset/icon_512x512.png   AppDir/usr/share/icons/hicolor/512x512/apps/nereussdr.png
 
           ./linuxdeploy-${{ matrix.arch }}.AppImage \
             --appdir AppDir \
